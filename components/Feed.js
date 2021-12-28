@@ -1,7 +1,41 @@
 import { SparklesIcon } from "@heroicons/react/solid";
+import { useSession } from "next-auth/react";
+import { useState, useEffect } from "react";
 import Input from "./Input";
+import Post from "./Post";
+import { onSnapshot, collection, query, orderBy } from "@firebase/firestore";
+import { firebaseDb } from "../firebase";
 
 const Feed = () => {
+  const { data: session } = useSession();
+  const [posts, setPosts] = useState([]);
+
+  // MESSY
+  // useEffect(() => {
+  //   const unsubscribe = onSnapshot(
+  //     query(collection(db, "posts"), orderBy("timestamp", "desc")),
+  //     (snapshot) => {
+  //       setPosts(snapshot.docs);
+  //     }
+  //   );
+
+  //   return () => {
+  //     unsubscribe();
+  //   };
+  // }, [db]);
+
+  // CLEAN
+  useEffect(
+    () =>
+      onSnapshot(
+        query(collection(firebaseDb, "tweets"), orderBy("timestamp", "desc")),
+        (snapshot) => {
+          setPosts(snapshot.docs);
+        }
+      ),
+    [firebaseDb]
+  );
+
   return (
     <div
       className="text-white flex-grow border-l border-r border-gray-700 
@@ -18,6 +52,11 @@ const Feed = () => {
       </div>
 
       <Input />
+      <div className="pb-72">
+        {posts.map((post) => (
+          <Post key={post.id} id={post.id} post={post.data()} />
+        ))}
+      </div>
     </div>
   );
 };

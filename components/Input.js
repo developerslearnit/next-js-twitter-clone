@@ -6,20 +6,76 @@ import {
   XIcon,
 } from "@heroicons/react/outline";
 import { useRef, useState } from "react";
+
+import { firebaseDb, storage } from "../firebase";
+import {
+  addDoc,
+  collection,
+  doc,
+  serverTimestamp,
+  updateDoc,
+} from "@firebase/firestore";
+import { getDownloadURL, ref, uploadString } from "@firebase/storage";
+
 import "emoji-mart/css/emoji-mart.css";
 import { Picker } from "emoji-mart";
+import { useSession } from "next-auth/react";
 
 const Input = () => {
   const [input, setInput] = useState("");
   const [selectedFile, setSelectedFile] = useState(null);
   const [showEmoji, setShowEmoji] = useState(false);
+  const [loading, setLoading] = useState(false);
   const filePickerRef = useRef(null);
+  const { data: session } = useSession();
 
-  const addImageToPost = () => {};
+  const sendPost = async () => {
+    if (loading) return;
+
+    setLoading(true);
+
+    const docRef = await addDoc(collection(firebaseDb, `tweets`), {
+      id: session.user.uid,
+      username: session.user.name,
+      userImg: session.user.image,
+      tag: session.user.tag,
+      text: input,
+      timestamp: serverTimestamp(),
+    });
+
+    const imageRef = ref(storage, `tweets/${docRef.id}/image`);
+
+    if (selectedFile) {
+      await uploadString(imageRef, selectedFile, "data_url").then(async () => {
+        const downloadURL = await getDownloadURL(imageRef);
+
+        await updateDoc(doc(firebaseDb, "tweets", docRef.id), {
+          image: downloadURL,
+        });
+      });
+    }
+
+    setLoading(false);
+    setInput("");
+    setSelectedFile(null);
+    setShowEmoji(false);
+  };
+
+  const addImageToPost = (e) => {
+    const reader = new FileReader();
+
+    if (e.target.files.length > 0) {
+      const file = e.target.files[0];
+      reader.readAsDataURL(file);
+    }
+
+    reader.onload = (readerEvent) => {
+      setSelectedFile(readerEvent.target.result);
+    };
+  };
 
   const addEmoji = (e) => {
     let sym = e.unified.split("-");
-    console.log(`sym`, sym);
     let codesArray = [];
     sym.forEach((el) => codesArray.push("0x" + el));
     let emoji = String.fromCodePoint(...codesArray);
@@ -28,10 +84,12 @@ const Input = () => {
 
   return (
     <div
-      className={`border-b border-gray-700 p-3 space-x-3 overflow-x-scroll flex`}
+      className={`border-b border-gray-700 p-3 space-x-3 overflow-x-scroll flex ${
+        loading && "opacity-60"
+      }`}
     >
       <img
-        src="https://lh3.googleusercontent.com/ogw/ADea4I6mt79jXFxXPCnvTtppcwSWs4UUAKjwpNUsou4-=s32-c-mo"
+        src={session.user.image}
         alt=""
         className="h-11 w-11 rounded-full cursor-pointer"
       />
@@ -67,55 +125,58 @@ const Input = () => {
           )}
         </div>
 
-        <div className="flex items-center justify-between pt-2.5">
-          <div className="flex items-center">
-            <div className="icon" onClick={() => filePickerRef.current.click()}>
-              <PhotographIcon className="text-[#1d9bf0] h-[22px]" />
-              <input
-                type="file"
-                hidden
-                onChange={addImageToPost}
-                ref={filePickerRef}
-              />
-            </div>
-            <div className="icon rotate-90">
-              <ChartBarIcon className="text-[#1d9bf0] h-[22px]" />
-            </div>
+        {!loading && (
+          <div className="flex items-center justify-between pt-2.5">
+            <div className="flex items-center">
+              <div
+                className="icon"
+                onClick={() => filePickerRef.current.click()}
+              >
+                <PhotographIcon className="text-[#1d9bf0] h-[22px]" />
+                <input
+                  type="file"
+                  hidden
+                  onChange={addImageToPost}
+                  ref={filePickerRef}
+                />
+              </div>
+              <div className="icon rotate-90">
+                <ChartBarIcon className="text-[#1d9bf0] h-[22px]" />
+              </div>
 
-            <div className="icon" onClick={() => setShowEmoji(!showEmoji)}>
-              <EmojiHappyIcon className="text-[#1d9bf0] h-[22px]" />
-            </div>
+              <div className="icon" onClick={() => setShowEmoji(!showEmoji)}>
+                <EmojiHappyIcon className="text-[#1d9bf0] h-[22px]" />
+              </div>
 
-            <div className="icon">
-              <CalendarIcon className="text-[#1d9bf0] h-[22px]" />
+              <div className="icon">
+                <CalendarIcon className="text-[#1d9bf0] h-[22px]" />
+              </div>
+              {showEmoji && (
+                <Picker
+                  onSelect={addEmoji}
+                  style={{
+                    position: "absolute",
+                    marginTop: "465px",
+                    marginLeft: -40,
+                    maxWidth: "320px",
+                    borderRadius: "20px",
+                  }}
+                  theme="dark"
+                />
+              )}
             </div>
-            {showEmoji && (
-              <Picker
-                onSelect={addEmoji}
-                style={{
-                  position: "absolute",
-                  marginTop: "465px",
-                  marginLeft: -40,
-                  maxWidth: "320px",
-                  borderRadius: "20px",
-                }}
-                theme="dark"
-              />
-            )}
-          </div>
-          <button
-            className="bg-[#1d9bf0] text-white px-4 py-1.5
+            <button
+              className="bg-[#1d9bf0] text-white px-4 py-1.5
            rounded-full font-bold shadow-md hover:bg-[#1a8cd8] disabled:hover:bg-[#1d9bf0]
            disabled:cursor-default disabled:opacity-50
            "
-            disabled={!input.trim() && !selectedFile}
-            onClick={() => {
-              console.log(input);
-            }}
-          >
-            Tweet
-          </button>
-        </div>
+              disabled={(!input.trim() && !selectedFile) || loading}
+              onClick={sendPost}
+            >
+              Tweet
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );
